@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>نقشه با دقت بالا (Aliem)</title>
+    <meta name="description" content="ابزار آنلاین و حرفه‌ای برای نمایش نقشه ماهواره‌ای شب و ترسیم مرز دقیق کشورهای جهان مانند ایران با افکت نئونی و شیشه‌ای.">
+
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/osmtogeojson/osmtogeojson.js"></script>
+
+    <style>
+        :root {
+            --neon-red: #ff3b30;
+            --glass-bg: rgba(40, 40, 40, 0.6);
+            --text-color: #f5f5f7;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #000; font-family: 'Vazirmatn', sans-serif;
+        }
+        #map-container {
+            width: 100%; height: 100%; position: relative;
+        }
+        #location-map {
+            width: 100%; height: 100%; background-color: #111;
+        }
+        .leaflet-tile-pane {
+            filter: brightness(0.7) contrast(1.1) grayscale(0.5);
+        }
+        .search-container {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 360px; background: var(--glass-bg);
+            border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            display: flex; align-items: center; padding: 6px 12px;
+            z-index: 1000; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        .search-container input {
+            flex-grow: 1; background: transparent; border: none;
+            outline: none; color: var(--text-color); font-size: 15px;
+            font-family: 'Vazirmatn', sans-serif; text-align: right;
+        }
+        .search-container input::placeholder { color: rgba(235, 235, 245, 0.6); }
+        .search-container .icon {
+            fill: var(--text-color); width: 22px; height: 22px;
+            cursor: pointer; opacity: 0.7; transition: opacity 0.2s;
+        }
+        .search-container .icon:hover { opacity: 1; }
+        #search-icon { margin-left: 10px; }
+        #clear-icon { margin-right: 10px; display: none; }
+        .custom-controls {
+            position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 10px;
+            z-index: 1000;
+        }
+        .custom-zoom-control, .instagram-link {
+            background: var(--glass-bg);
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        .custom-zoom-control {
+             display: flex; flex-direction: column;
+        }
+        .custom-zoom-control button {
+            background: transparent; border: none; color: var(--text-color);
+            font-size: 24px; font-weight: 500; width: 44px; height: 44px;
+            cursor: pointer; transition: background-color 0.2s;
+        }
+        .custom-zoom-control button:hover { background-color: rgba(255, 255, 255, 0.1); }
+        .custom-zoom-control button:first-child { border-bottom: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px 18px 0 0; }
+        .custom-zoom-control button:last-child { border-radius: 0 0 18px 18px; }
+        .instagram-link {
+            display: flex; align-items: center; justify-content: center;
+            width: 44px; height: 44px; text-decoration: none;
+        }
+        .instagram-link svg {
+            width: 26px; height: 26px; fill: var(--text-color);
+            opacity: 0.8; transition: opacity 0.2s;
+        }
+        .instagram-link:hover svg { opacity: 1; }
+        .neon-border {
+            stroke: var(--neon-red);
+            stroke-width: 2.5px;
+            stroke-opacity: 0.9;
+            fill: var(--neon-red);
+            fill-opacity: 0.1;
+            filter: drop-shadow(0 0 1px #000);
+        }
+        .loader {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px; height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.2);
+            border-top-color: var(--neon-red);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            z-index: 2000;
+            display: none;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <div id="loader" class="loader"></div>
+        <div class="search-container">
+            <svg id="clear-icon" class="icon" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            <input type="text" id="location-input" placeholder="جستجو کنید...">
+            <svg id="search-icon" class="icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        </div>
+        <div class="custom-controls">
+            <div class="custom-zoom-control">
+                <button id="zoom-in">+</button>
+                <button id="zoom-out">−</button>
+            </div>
+            <a href="https://www.instagram.com/dy3o.n" target="_blank" class="instagram-link">
+                <svg viewBox="0 0 24 24"><path d="M7.8,2H16.2C19.4,2 22,4.6 22,7.8V16.2A5.8,5.8 0 0,1 16.2,22H7.8C4.6,22 2,19.4 2,16.2V7.8A5.8,5.8 0 0,1 7.8,2M7.6,4A3.6,3.6 0 0,0 4,7.6V16.4C4,18.39 5.61,20 7.6,20H16.4A3.6,3.6 0 0,0 20,16.4V7.6C20,5.61 18.39,4 16.4,4H7.6M17.25,5.5A1.25,1.25 0 0,1 18.5,6.75A1.25,1.25 0 0,1 17.25,8A1.25,1.25 0 0,1 16,6.75A1.25,1.25 0 0,1 17.25,5.5M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z" /></svg>
+            </a>
+        </div>
+        <div id="location-map"></div>
+    </div>
+
+    <script>
+        let featureLayer = null;
+        let flagMarker = null;
+        const locationInput = document.getElementById('location-input');
+        const clearIcon = document.getElementById('clear-icon');
+        const searchIcon = document.getElementById('search-icon');
+        const loader = document.getElementById('loader');
+
+        const map = L.map('location-map', { zoomControl: false }).setView([32.4279, 53.6880], 5);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 20
+        }).addTo(map);
+
+        document.getElementById('zoom-in').addEventListener('click', () => map.zoomIn());
+        document.getElementById('zoom-out').addEventListener('click', () => map.zoomOut());
+        searchIcon.addEventListener('click', () => findLocation(locationInput.value));
+        clearIcon.addEventListener('click', clearSearch);
+        locationInput.addEventListener('keyup', (event) => {
+            clearIcon.style.display = locationInput.value ? 'block' : 'none';
+            if (event.key === 'Enter') findLocation(locationInput.value);
+        });
+        
+        function clearSearch() {
+            locationInput.value = '';
+            clearIcon.style.display = 'none';
+            if (featureLayer) map.removeLayer(featureLayer);
+            if (flagMarker) map.removeLayer(flagMarker);
+            map.flyTo([32.4279, 53.6880], 5);
+        }
+        
+        async function findLocation(locationName) {
+            if (!locationName) return;
+            loader.style.display = 'block';
+            try {
+                const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationName)}&limit=1`;
+                const nominatimResponse = await fetch(nominatimUrl);
+                const nominatimData = await nominatimResponse.json();
+
+                if (nominatimData.length === 0) throw new Error("مکان یافت نشد.");
+
+                const locationDetails = nominatimData[0];
+                const osmId = locationDetails.osm_id;
+                const relationId = locationDetails.osm_type === 'relation' ? parseInt(osmId) + 3600000000 : osmId;
+                
+                const overpassQuery = `[out:json][timeout:30];relation(${relationId});(._;>;);out geom;`;
+                const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+                const overpassResponse = await fetch(overpassUrl);
+                const overpassData = await overpassResponse.json();
+                
+                const geojsonData = osmtogeojson(overpassData);
+                drawData(geojsonData, locationDetails);
+
+            } catch (error) {
+                console.error("خطا در پردازش:", error);
+                alert(error.message || "یک خطای ناشناخته رخ داد.");
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        function drawData(geojsonData, locationDetails) {
+            if (featureLayer) map.removeLayer(featureLayer);
+            if (flagMarker) map.removeLayer(flagMarker);
+
+            if (geojsonData && geojsonData.features && geojsonData.features.length > 0) {
+                featureLayer = L.geoJSON(geojsonData, {
+                    className: 'neon-border'
+                }).addTo(map);
+
+                map.flyToBounds(featureLayer.getBounds(), { padding: [50, 50] });
+
+                if (locationDetails.addresstype === 'country' || locationDetails.type === 'administrative') {
+                    const countryCode = locationDetails.address?.country_code || (locationDetails.extratags?.['ISO3166-1:alpha2'] || '').toLowerCase();
+                    if(countryCode) {
+                        const flagUrl = `https://flagcdn.com/w160/${countryCode}.png`;
+                        const flagIcon = L.icon({ iconUrl: flagUrl, iconSize: [80, 60], iconAnchor: [40, 30] });
+                        const center = featureLayer.getBounds().getCenter();
+                        flagMarker = L.marker(center, { icon: flagIcon }).addTo(map);
+                    }
+                }
+            } else {
+                alert("مرز دقیقی برای این مکان یافت نشد. ممکن است داده‌های آن در OpenStreetMap کامل نباشد.");
+                map.flyTo([parseFloat(locationDetails.lat), parseFloat(locationDetails.lon)], 10);
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            if (map) setTimeout(() => map.invalidateSize(), 100);
+        });
+
+        findLocation('Iran');
+    </script>
+</body>
+</html>
